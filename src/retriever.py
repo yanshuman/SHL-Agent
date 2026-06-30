@@ -6,7 +6,13 @@ import faiss
 from sentence_transformers import SentenceTransformer
 
 class CatalogRetriever:
-    def __init__(self, catalog_path: str = "data/catalog.json", index_path: str = "data/catalog.index"):
+    def __init__(self, catalog_path: str = None, index_path: str = None):
+        if catalog_path is None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            catalog_path = os.path.join(base_dir, "data", "catalog.json")
+        if index_path is None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            index_path = os.path.join(base_dir, "data", "catalog.index")
         self.catalog_path = catalog_path
         self.index_path = index_path
         self.catalog: List[Dict[str, Any]] = []
