@@ -3,12 +3,14 @@ services:
     name: shl-assessment-recommender
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python -c "from src.retriever import CatalogRetriever; CatalogRetriever('data/catalog.json', 'data/catalog.index')"
+    buildCommand: pip install -r requirements.txt && pip install 'huggingface-hub<0.24' && python -c "from src.retriever import CatalogRetriever; CatalogRetriever('data/catalog.json', 'data/catalog.index')"
     startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: LLM_PROVIDER
-        value: openrouter
+        value: gemini
       - key: LLM_MODEL
-        value: meta-llama/llama-3.1-8b-instruct:free
+        value: gemini-2.5-flash
       - key: LLM_API_KEY
         sync: false
+      - key: PYTHONPATH
+        value: /app/src

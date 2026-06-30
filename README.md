@@ -32,25 +32,25 @@ curl -X POST http://localhost:8000/chat \
 
 The service works without an LLM using rule-based replies, but natural language quality improves significantly with a lightweight model.
 
-**Option A: OpenRouter (free tier available)**
+**Option A: Google Gemini (free tier available) — RECOMMENDED**
+```bash
+export LLM_PROVIDER=gemini
+export LLM_API_KEY=AQ.xxxx...   # your key here
+export LLM_MODEL=gemini-2.5-flash
+```
+
+**Option B: OpenRouter (free tier available)**
 ```bash
 export LLM_PROVIDER=openrouter
 export LLM_API_KEY=sk-or-v1-...
 export LLM_MODEL=meta-llama/llama-3.1-8b-instruct:free
 ```
 
-**Option B: Groq (free tier available)**
+**Option C: Groq (free tier available)**
 ```bash
 export LLM_PROVIDER=groq
 export LLM_API_KEY=gsk_...
 export LLM_MODEL=llama-3.1-8b-instant
-```
-
-**Option C: Google Gemini (free tier available)**
-```bash
-export LLM_PROVIDER=gemini
-export LLM_API_KEY=...
-export LLM_MODEL=gemini-1.5-flash
 ```
 
 ## Using Official SHL Catalog Data
