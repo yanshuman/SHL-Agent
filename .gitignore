@@ -8,3 +8,4 @@ server.pid
 *.egg-info/
 dist/
 build/
+test_env/
