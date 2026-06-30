@@ -2,8 +2,6 @@ import json
 import os
 from typing import List, Dict, Any, Optional
 import numpy as np
-import faiss
-from sentence_transformers import SentenceTransformer
 
 class CatalogRetriever:
     def __init__(self, catalog_path: str = None, index_path: str = None):
@@ -16,25 +14,19 @@ class CatalogRetriever:
         self.catalog_path = catalog_path
         self.index_path = index_path
         self.catalog: List[Dict[str, Any]] = []
-        self.index: Optional[faiss.Index] = None
-        self.model: Optional[SentenceTransformer] = None
+        self.vectors = None
+        self.vocab = {}
+        self.idf = None
         self._load_catalog()
         self._build_or_load_index()
 
     def _load_catalog(self):
         with open(self.catalog_path, "r", encoding="utf-8") as f:
             self.catalog = json.load(f)
-        # Validate required fields
         for item in self.catalog:
-            assert "name" in item and "url" in item and "test_type" in item, f"Invalid catalog item: {item}"
+            assert "name" in item and "url" in item and "test_type" in item
 
-    def _build_or_load_index(self):
-        if os.path.exists(self.index_path) and os.path.exists(self.index_path + ".mapping"):
-            self._load_index()
-        else:
-            self._build_index()
-
-    def _get_text_for_embedding(self, item: Dict[str, Any]) -> str:
+    def _get_text(self, item: Dict[str, Any]) -> str:
         parts = [
             item["name"],
             item.get("description", ""),
@@ -42,48 +34,91 @@ class CatalogRetriever:
             item.get("test_type", ""),
             " ".join(item.get("job_levels", [])),
         ]
-        return " ".join(parts)
+        return " ".join(parts).lower()
 
-    def _build_index(self):
-        print("Building FAISS index...")
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
-        texts = [self._get_text_for_embedding(item) for item in self.catalog]
-        embeddings = self.model.encode(texts, show_progress_bar=True, convert_to_numpy=True)
-        dim = embeddings.shape[1]
-        self.index = faiss.IndexFlatIP(dim)
-        faiss.normalize_L2(embeddings)
-        self.index.add(embeddings)
-        faiss.write_index(self.index, self.index_path)
-        mapping = [item["name"] for item in self.catalog]
-        with open(self.index_path + ".mapping", "w", encoding="utf-8") as f:
-            json.dump(mapping, f)
-        print(f"Index built with {len(self.catalog)} items.")
+    def _tokenize(self, text: str) -> List[str]:
+        return text.lower().replace(",", " ").replace(".", " ").split()
 
-    def _load_index(self):
-        print("Loading FAISS index...")
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
-        self.index = faiss.read_index(self.index_path)
-        with open(self.index_path + ".mapping", "r", encoding="utf-8") as f:
-            mapping = json.load(f)
-        # Reorder catalog to match mapping if needed
-        name_to_item = {item["name"]: item for item in self.catalog}
-        self.catalog = [name_to_item[name] for name in mapping]
-        print(f"Index loaded with {len(self.catalog)} items.")
+    def _build_tfidf(self, texts: List[str]):
+        # Build vocabulary
+        vocab = {}
+        doc_freq = {}
+        for text in texts:
+            tokens = set(self._tokenize(text))
+            for token in tokens:
+                if token not in vocab:
+                    vocab[token] = len(vocab)
+                doc_freq[token] = doc_freq.get(token, 0) + 1
+        
+        N = len(texts)
+        idf = np.zeros(len(vocab))
+        for token, idx in vocab.items():
+            idf[idx] = np.log((N + 1) / (doc_freq[token] + 1)) + 1
+        
+        # Build document vectors
+        vectors = np.zeros((N, len(vocab)))
+        for i, text in enumerate(texts):
+            tokens = self._tokenize(text)
+            for token in tokens:
+                if token in vocab:
+                    vectors[i, vocab[token]] += 1
+            # TF-IDF weighting
+            vectors[i] *= idf
+        
+        # L2 normalize
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        vectors = vectors / norms
+        
+        return vectors, vocab, idf
+
+    def _build_or_load_index(self):
+        import pickle
+        tfidf_path = self.index_path + ".tfidf"
+        if os.path.exists(tfidf_path):
+            print("Loading lightweight TF-IDF index...")
+            with open(tfidf_path, "rb") as f:
+                data = pickle.load(f)
+            self.vectors = data["vectors"]
+            self.vocab = data["vocab"]
+            self.idf = data["idf"]
+            print(f"Index loaded with {len(self.catalog)} items, vocab size {len(self.vocab)}.")
+        else:
+            print("Building lightweight TF-IDF index...")
+            texts = [self._get_text(item) for item in self.catalog]
+            self.vectors, self.vocab, self.idf = self._build_tfidf(texts)
+            with open(tfidf_path, "wb") as f:
+                pickle.dump({"vectors": self.vectors, "vocab": self.vocab, "idf": self.idf}, f)
+            print(f"Index built with {len(self.catalog)} items, vocab size {len(self.vocab)}.")
+
+    def _encode_query(self, query: str) -> np.ndarray:
+        tokens = self._tokenize(query)
+        vec = np.zeros(len(self.vocab))
+        for token in tokens:
+            if token in self.vocab:
+                vec[self.vocab[token]] += 1
+        vec *= self.idf
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec = vec / norm
+        return vec.reshape(1, -1)
 
     def search(self, query: str, top_k: int = 10, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        if self.model is None or self.index is None:
+        if self.vectors is None:
             raise RuntimeError("Index not initialized")
         
-        query_embedding = self.model.encode([query], convert_to_numpy=True)
-        faiss.normalize_L2(query_embedding)
-        scores, indices = self.index.search(query_embedding, top_k * 3)
+        query_vec = self._encode_query(query)
+        # Cosine similarity via dot product (vectors are L2 normalized)
+        scores = (self.vectors @ query_vec.T).flatten()
+        # Get top indices
+        top_indices = np.argsort(scores)[::-1]
         
         results = []
-        for score, idx in zip(scores[0], indices[0]):
-            if idx == -1:
+        for idx in top_indices:
+            if scores[idx] <= 0:
                 continue
-            item = self.catalog[idx].copy()
-            item["_score"] = float(score)
+            item = self.catalog[int(idx)].copy()
+            item["_score"] = float(scores[idx])
             
             # Apply filters
             if filters:
@@ -93,7 +128,7 @@ class CatalogRetriever:
                 if "job_levels" in filters and not any(level in item.get("job_levels", []) for level in filters["job_levels"]):
                     skip = True
                 if "keywords" in filters:
-                    item_text = self._get_text_for_embedding(item).lower()
+                    item_text = self._get_text(item).lower()
                     if not any(kw.lower() in item_text for kw in filters["keywords"]):
                         skip = True
                 if skip:
