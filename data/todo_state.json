@@ -1,0 +1,47 @@
+[
+  {
+    "content": "Create project structure and requirements",
+    "status": "completed",
+    "priority": "high"
+  },
+  {
+    "content": "Scrape/build SHL Individual Test Solutions catalog",
+    "status": "completed",
+    "priority": "high"
+  },
+  {
+    "content": "Build vector index and retrieval system for catalog",
+    "status": "in_progress",
+    "priority": "high"
+  },
+  {
+    "content": "Implement FastAPI service with /health and /chat endpoints",
+    "status": "pending",
+    "priority": "high"
+  },
+  {
+    "content": "Build conversational agent logic (clarify, recommend, refine, compare)",
+    "status": "pending",
+    "priority": "high"
+  },
+  {
+    "content": "Add guardrails (scope, refusal, hallucination prevention)",
+    "status": "pending",
+    "priority": "high"
+  },
+  {
+    "content": "Test with example conversation patterns",
+    "status": "pending",
+    "priority": "medium"
+  },
+  {
+    "content": "Write approach document",
+    "status": "pending",
+    "priority": "medium"
+  },
+  {
+    "content": "Deploy service and provide endpoint URL",
+    "status": "pending",
+    "priority": "high"
+  }
+]
